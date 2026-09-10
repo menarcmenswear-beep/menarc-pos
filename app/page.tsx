@@ -31,19 +31,36 @@ export default function POS() {
     setLoading(false);
   }
 
-  function addToCart() {
-    const cleanSku = sku.trim().toUpperCase();
-    const item = inventory.find(i => i.sku.toUpperCase() === cleanSku);
+  function addToCart(scannedSku?: string) {
+    const targetSku = (scannedSku || sku).trim().toUpperCase();
+    if (!targetSku) return;
+
+    const item = inventory.find(i => i.sku.toUpperCase() === targetSku);
     if (item) {
       if (item.current_quantity <= 0) {
         alert('Item out of stock!');
         return;
       }
-      setCart([...cart, { ...item, checkoutQty: 1, discount: 0 }]);
+      
+      // Check if item already exists in cart, increment qty if it does
+      const existingIndex = cart.findIndex(cartItem => cartItem.sku.toUpperCase() === targetSku);
+      if (existingIndex > -1) {
+        const updatedCart = [...cart];
+        if (updatedCart[existingIndex].checkoutQty < item.current_quantity) {
+          updatedCart[existingIndex].checkoutQty += 1;
+          setCart(updatedCart);
+        } else {
+          alert('Cannot add more than available stock.');
+        }
+      } else {
+        setCart([...cart, { ...item, checkoutQty: 1, discount: 0 }]);
+      }
+
       setSku('');
       setStatusMsg('');
     } else {
-      alert(`SKU "${cleanSku}" not found in inventory.`);
+      alert(`SKU "${targetSku}" not found in inventory.`);
+      setSku('');
     }
   }
 
@@ -82,27 +99,12 @@ export default function POS() {
         <header className="flex justify-between items-center mb-8 border-b border-neutral-800 pb-4">
           <div>
             <h1 className="text-2xl font-black tracking-widest">MENARC</h1>
-            <p className="text-xs text-neutral-400">Offline Point of Sale & Inventory</p>
+            <p className="text-xs text-neutral-400">Offline Point of Sale & Barcode Scanner</p>
           </div>
           <nav className="flex items-center gap-2">
-            <Link 
-              href="/" 
-              className="text-xs text-white bg-neutral-800 border border-neutral-700 px-3 py-1.5 rounded transition"
-            >
-              POS Checkout
-            </Link>
-            <Link 
-              href="/inventory" 
-              className="text-xs text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded transition"
-            >
-              Inventory
-            </Link>
-            <Link 
-              href="/dashboard" 
-              className="text-xs text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded transition"
-            >
-              Dashboard
-            </Link>
+            <Link href="/" className="text-xs text-white bg-neutral-800 border border-neutral-700 px-3 py-1.5 rounded transition">POS Checkout</Link>
+            <Link href="/inventory" className="text-xs text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded transition">Inventory</Link>
+            <Link href="/dashboard" className="text-xs text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded transition">Dashboard</Link>
           </nav>
         </header>
 
@@ -117,12 +119,7 @@ export default function POS() {
           <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-xl shadow-lg">
             <div className="flex justify-between items-center mb-4">
               <h2 className="font-bold text-base text-neutral-200">Live Inventory</h2>
-              <button 
-                onClick={fetchInventory} 
-                className="text-xs text-neutral-400 hover:text-white border border-neutral-800 px-2.5 py-1 rounded transition"
-              >
-                Refresh
-              </button>
+              <button onClick={fetchInventory} className="text-xs text-neutral-400 hover:text-white border border-neutral-800 px-2.5 py-1 rounded transition">Refresh</button>
             </div>
 
             {loading ? (
@@ -131,20 +128,26 @@ export default function POS() {
               <p className="text-sm text-neutral-500 py-4">No products found in database.</p>
             ) : (
               <div className="divide-y divide-neutral-800 max-h-[420px] overflow-y-auto pr-2">
-                {inventory.map((item) => (
-                  <div key={item.sku} className="py-3 flex justify-between items-center text-sm">
-                    <div>
-                      <p className="font-semibold text-neutral-100">{item.sku}</p>
-                      <p className="text-xs text-neutral-400">{item.name} {item.color ? `• ${item.color}` : ''} {item.size ? `• ${item.size}` : ''}</p>
+                {inventory.map((item) => {
+                  const isLowStock = item.current_quantity < 15;
+                  return (
+                    <div key={item.sku} className="py-3 flex justify-between items-center text-sm">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-neutral-100">{item.sku}</p>
+                          {isLowStock && <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 text-[10px] px-1.5 py-0.5 rounded font-medium">Low Stock</span>}
+                        </div>
+                        <p className="text-xs text-neutral-400">{item.name} {item.color ? `• ${item.color}` : ''} {item.size ? `• ${item.size}` : ''}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className={`font-mono text-sm ${isLowStock ? 'text-amber-400 font-bold' : 'text-neutral-300'}`}>
+                          {item.current_quantity} in stock
+                        </p>
+                        <p className="text-xs text-neutral-500">₹{item.price}</p>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className={`font-mono text-sm ${item.current_quantity < 15 ? 'text-amber-400 font-bold' : 'text-neutral-300'}`}>
-                        {item.current_quantity} in stock
-                      </p>
-                      <p className="text-xs text-neutral-500">₹{item.price}</p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -154,14 +157,19 @@ export default function POS() {
             <div className="flex gap-2">
               <input
                 type="text"
-                placeholder="Scan or type SKU (e.g. TSH-BLK-M)..."
+                autoFocus
+                placeholder="Scan barcode or type SKU..."
                 className="bg-neutral-900 border border-neutral-700 text-white px-4 py-3 rounded-lg w-full uppercase placeholder:text-neutral-500 focus:outline-none focus:border-white text-sm tracking-wider"
                 value={sku}
                 onChange={(e) => setSku(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && addToCart()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    addToCart();
+                  }
+                }}
               />
               <button
-                onClick={addToCart}
+                onClick={() => addToCart()}
                 className="bg-white text-black font-bold px-6 py-3 rounded-lg hover:bg-neutral-200 transition text-sm shrink-0"
               >
                 Add
@@ -172,14 +180,14 @@ export default function POS() {
               <div>
                 <h2 className="font-bold text-base text-neutral-200 mb-4">Current Cart</h2>
                 {cart.length === 0 ? (
-                  <p className="text-sm text-neutral-500 py-12 text-center">Cart is empty. Enter a SKU above to begin sale.</p>
+                  <p className="text-sm text-neutral-500 py-12 text-center">Cart is empty. Scan a barcode or type SKU to begin sale.</p>
                 ) : (
                   <div className="divide-y divide-neutral-800 max-h-[220px] overflow-y-auto pr-2">
                     {cart.map((item, index) => (
                       <div key={index} className="py-2.5 flex justify-between items-center text-sm">
                         <div>
                           <p className="font-medium text-white">{item.sku}</p>
-                          <p className="text-xs text-neutral-400">Qty: {item.checkoutQty}</p>
+                          <p className="text-xs text-neutral-400">Qty: {item.checkoutQty} × ₹{item.price}</p>
                         </div>
                         <span className="font-mono text-neutral-200">₹{item.price * item.checkoutQty}</span>
                       </div>
