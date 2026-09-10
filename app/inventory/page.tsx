@@ -12,6 +12,7 @@ export default function InventoryManagement() {
   const [inventory, setInventory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusMsg, setStatusMsg] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Form state for new product
   const [newSku, setNewSku] = useState('');
@@ -79,6 +80,17 @@ export default function InventoryManagement() {
       fetchInventory();
     }
   }
+
+  // Filter inventory based on search term
+  const filteredInventory = inventory.filter((item) => {
+    const term = searchTerm.toLowerCase();
+    return (
+      item.sku?.toLowerCase().includes(term) ||
+      item.name?.toLowerCase().includes(term) ||
+      item.color?.toLowerCase().includes(term) ||
+      item.size?.toLowerCase().includes(term)
+    );
+  });
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white p-6 md:p-10 font-sans">
@@ -194,46 +206,67 @@ export default function InventoryManagement() {
             </form>
           </div>
 
-          {/* Inventory Table List */}
-          <div className="md:col-span-2 bg-neutral-900 border border-neutral-800 p-6 rounded-xl shadow-lg">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="font-bold text-base text-neutral-200">Catalog Stock List</h2>
-              <span className="text-xs text-neutral-500">{inventory.length} Total SKUs</span>
+          {/* Inventory Table List with Search & Low Stock Warnings */}
+          <div className="md:col-span-2 bg-neutral-900 border border-neutral-800 p-6 rounded-xl shadow-lg flex flex-col">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+              <div>
+                <h2 className="font-bold text-base text-neutral-200">Catalog Stock List</h2>
+                <p className="text-xs text-neutral-500">Showing {filteredInventory.length} of {inventory.length} SKUs</p>
+              </div>
+              <input
+                type="text"
+                placeholder="Search SKU, name, color..."
+                className="bg-neutral-950 border border-neutral-700 text-white px-3 py-1.5 rounded text-xs focus:outline-none focus:border-white w-full sm:w-56"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
             </div>
 
             {loading ? (
               <p className="text-sm text-neutral-500 py-4">Loading catalog...</p>
-            ) : inventory.length === 0 ? (
-              <p className="text-sm text-neutral-500 py-4">No inventory items found.</p>
+            ) : filteredInventory.length === 0 ? (
+              <p className="text-sm text-neutral-500 py-4">No matching inventory items found.</p>
             ) : (
-              <div className="divide-y divide-neutral-800 max-h-[500px] overflow-y-auto pr-2">
-                {inventory.map((item) => (
-                  <div key={item.sku} className="py-3 flex justify-between items-center text-sm">
-                    <div>
-                      <p className="font-semibold text-neutral-100">{item.sku}</p>
-                      <p className="text-xs text-neutral-400">
-                        {item.name || 'Unnamed'} {item.color ? `• ${item.color}` : ''} {item.size ? `• ${item.size}` : ''} | ₹{item.price}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono text-neutral-300">{item.current_quantity} qty</span>
-                      <div className="flex gap-1">
-                        <button 
-                          onClick={() => updateQuantity(item.sku, item.current_quantity, -1)}
-                          className="bg-neutral-800 px-2 py-1 rounded text-xs hover:bg-neutral-700"
-                        >
-                          -
-                        </button>
-                        <button 
-                          onClick={() => updateQuantity(item.sku, item.current_quantity, 1)}
-                          className="bg-neutral-800 px-2 py-1 rounded text-xs hover:bg-neutral-700"
-                        >
-                          +
-                        </button>
+              <div className="divide-y divide-neutral-800 max-h-[440px] overflow-y-auto pr-2">
+                {filteredInventory.map((item) => {
+                  const isLowStock = item.current_quantity < 15;
+                  return (
+                    <div key={item.sku} className="py-3 flex justify-between items-center text-sm">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-neutral-100">{item.sku}</p>
+                          {isLowStock && (
+                            <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 text-[10px] px-1.5 py-0.5 rounded font-medium">
+                              Low Stock
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-neutral-400">
+                          {item.name || 'Unnamed'} {item.color ? `• ${item.color}` : ''} {item.size ? `• ${item.size}` : ''} | ₹{item.price}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`font-mono text-sm ${isLowStock ? 'text-amber-400 font-bold' : 'text-neutral-300'}`}>
+                          {item.current_quantity} qty
+                        </span>
+                        <div className="flex gap-1">
+                          <button 
+                            onClick={() => updateQuantity(item.sku, item.current_quantity, -1)}
+                            className="bg-neutral-800 px-2 py-1 rounded text-xs hover:bg-neutral-700"
+                          >
+                            -
+                          </button>
+                          <button 
+                            onClick={() => updateQuantity(item.sku, item.current_quantity, 1)}
+                            className="bg-neutral-800 px-2 py-1 rounded text-xs hover:bg-neutral-700"
+                          >
+                            +
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
