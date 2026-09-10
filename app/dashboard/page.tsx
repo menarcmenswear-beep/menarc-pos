@@ -32,7 +32,21 @@ export default function Dashboard() {
     setLoading(false);
   }
 
-  // Calculate metrics
+  // Export Sales History to CSV
+  function exportSalesCSV() {
+    if (sales.length === 0) return alert('No sales data to export.');
+    const headers = ['Transaction ID', 'SKU', 'Quantity', 'Item Rate', 'Discount', 'Final Value', 'Timestamp'];
+    const rows = sales.map(s => [s.id, s.sku, s.qty, s.item_rate, s.discount || 0, s.final_value, s.created_at]);
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `menarc_sales_report_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
   const totalRevenue = sales.reduce((acc, item) => acc + (item.final_value || 0), 0);
   const totalUnits = sales.reduce((acc, item) => acc + (item.qty || 0), 0);
   const totalTransactions = sales.length;
@@ -43,37 +57,18 @@ export default function Dashboard() {
         <header className="flex justify-between items-center mb-8 border-b border-neutral-800 pb-4">
           <div>
             <h1 className="text-2xl font-black tracking-widest">MENARC</h1>
-            <p className="text-xs text-neutral-400">Sales Analytics & Revenue Dashboard</p>
+            <p className="text-xs text-neutral-400">Sales Analytics & Revenue Reports</p>
           </div>
           <nav className="flex items-center gap-2">
-            <Link 
-              href="/" 
-              className="text-xs text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded transition"
-            >
-              POS Checkout
-            </Link>
-            <Link 
-              href="/inventory" 
-              className="text-xs text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded transition"
-            >
-              Inventory
-            </Link>
-            <Link 
-              href="/dashboard" 
-              className="text-xs text-white bg-neutral-800 border border-neutral-700 px-3 py-1.5 rounded transition"
-            >
-              Dashboard
-            </Link>
+            <Link href="/" className="text-xs text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded transition">POS Checkout</Link>
+            <Link href="/inventory" className="text-xs text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded transition">Inventory</Link>
+            <Link href="/dashboard" className="text-xs text-white bg-neutral-800 border border-neutral-700 px-3 py-1.5 rounded transition">Dashboard</Link>
           </nav>
         </header>
 
-        {statusMsg && (
-          <div className="mb-6 p-3 bg-neutral-900 border border-neutral-700 text-yellow-400 text-sm rounded">
-            {statusMsg}
-          </div>
-        )}
+        {statusMsg && <div className="mb-6 p-3 bg-neutral-900 border border-neutral-700 text-yellow-400 text-sm rounded">{statusMsg}</div>}
 
-        {/* Metrics Cards Grid */}
+        {/* Metrics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-xl shadow-lg">
             <p className="text-xs text-neutral-400 uppercase tracking-wider mb-1">Total Revenue</p>
@@ -89,37 +84,27 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Recent Transactions List */}
+        {/* Sales History List with CSV Export */}
         <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-xl shadow-lg">
           <div className="flex justify-between items-center mb-4">
             <h2 className="font-bold text-base text-neutral-200">Recent Sales History</h2>
-            <button 
-              onClick={fetchSales} 
-              className="text-xs text-neutral-400 hover:text-white border border-neutral-800 px-2.5 py-1 rounded transition"
-            >
-              Refresh Data
-            </button>
+            <div className="flex gap-2">
+              <button onClick={exportSalesCSV} className="text-xs bg-neutral-800 border border-neutral-700 hover:bg-neutral-700 px-3 py-1.5 rounded transition">Export CSV</button>
+              <button onClick={fetchSales} className="text-xs text-neutral-400 hover:text-white border border-neutral-800 px-2.5 py-1 rounded transition">Refresh</button>
+            </div>
           </div>
 
-          {loading ? (
-            <p className="text-sm text-neutral-500 py-4">Loading analytics...</p>
-          ) : sales.length === 0 ? (
-            <p className="text-sm text-neutral-500 py-4">No sales recorded yet.</p>
-          ) : (
+          {loading ? <p className="text-sm text-neutral-500 py-4">Loading analytics...</p> : sales.length === 0 ? <p className="text-sm text-neutral-500 py-4">No sales recorded yet.</p> : (
             <div className="divide-y divide-neutral-800 max-h-[420px] overflow-y-auto pr-2">
               {sales.map((sale) => (
                 <div key={sale.id} className="py-3.5 flex justify-between items-center text-sm">
                   <div>
                     <p className="font-semibold text-neutral-100 uppercase">{sale.sku}</p>
-                    <p className="text-xs text-neutral-400">
-                      Qty: {sale.qty} • Rate: ₹{sale.item_rate} {sale.discount > 0 ? `• Discount: ₹${sale.discount}` : ''}
-                    </p>
+                    <p className="text-xs text-neutral-400">Qty: {sale.qty} • Rate: ₹{sale.item_rate} {sale.discount > 0 ? `• Discount: ₹${sale.discount}` : ''}</p>
                   </div>
                   <div className="text-right">
                     <p className="font-mono text-sm font-bold text-white">₹{sale.final_value}</p>
-                    <p className="text-xs text-neutral-500">
-                      {sale.created_at ? new Date(sale.created_at).toLocaleString() : 'Just now'}
-                    </p>
+                    <p className="text-xs text-neutral-500">{sale.created_at ? new Date(sale.created_at).toLocaleString() : 'Just now'}</p>
                   </div>
                 </div>
               ))}
