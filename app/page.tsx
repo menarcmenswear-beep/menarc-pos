@@ -11,91 +11,178 @@ export default function POS() {
   const [sku, setSku] = useState('');
   const [cart, setCart] = useState<any[]>([]);
   const [inventory, setInventory] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [statusMsg, setStatusMsg] = useState('');
 
   useEffect(() => {
     fetchInventory();
   }, []);
 
   async function fetchInventory() {
-    const { data } = await supabase.from('inventory').select('*');
-    if (data) setInventory(data);
+    setLoading(true);
+    const { data, error } = await supabase.from('inventory').select('*');
+    if (error) {
+      console.error('Fetch error:', error);
+      setStatusMsg('Error fetching stock: ' + error.message);
+    } else if (data) {
+      setInventory(data);
+    }
+    setLoading(false);
   }
 
   function addToCart() {
-    const item = inventory.find(i => i.sku === sku.toUpperCase());
+    const cleanSku = sku.trim().toUpperCase();
+    const item = inventory.find(i => i.sku.toUpperCase() === cleanSku);
     if (item) {
+      if (item.current_quantity <= 0) {
+        alert('Item out of stock!');
+        return;
+      }
       setCart([...cart, { ...item, checkoutQty: 1, discount: 0 }]);
       setSku('');
+      setStatusMsg('');
     } else {
-      alert('SKU not found in master stock');
+      alert(`SKU "${cleanSku}" not found in inventory.`);
     }
   }
 
   async function completeSale() {
+    if (cart.length === 0) return;
+    setStatusMsg('Processing checkout...');
+
     for (const item of cart) {
       const finalValue = (item.checkoutQty * item.price) - item.discount;
-      await supabase.from('sales').insert({
+      const { error } = await supabase.from('sales').insert({
         sku: item.sku,
         qty: item.checkoutQty,
         item_rate: item.price,
         discount: item.discount,
         final_value: finalValue
       });
+
+      if (error) {
+        alert('Sale failed: ' + error.message);
+        setStatusMsg('');
+        return;
+      }
     }
-    alert('MENARC Sale Completed.');
+
+    alert('MENARC Sale Completed Successfully.');
     setCart([]);
-    fetchInventory(); 
+    setStatusMsg('');
+    fetchInventory();
   }
 
-  return (
-    <div className="p-8 max-w-4xl mx-auto font-sans">
-      <h1 className="text-3xl font-bold mb-8 tracking-tight">MENARC Offline POS</h1>
-      
-      <div className="grid grid-cols-2 gap-8">
-        <div className="bg-gray-50 p-6 rounded-lg">
-          <h2 className="font-bold mb-4">Live Inventory</h2>
-          {inventory.map(item => (
-            <div key={item.sku} className="flex justify-between border-b py-2 text-sm">
-              <span>{item.sku}</span>
-              <span className={item.current_quantity < 15 ? 'text-red-500 font-bold' : ''}>
-                Stock: {item.current_quantity}
-              </span>
-            </div>
-          ))}
-        </div>
+  const cartTotal = cart.reduce((acc, item) => acc + (item.price * item.checkoutQty) - item.discount, 0);
 
-        <div>
-          <div className="flex gap-2 mb-6">
-            <input 
-              type="text" 
-              placeholder="Scan or type SKU..." 
-              className="border p-2 w-full uppercase"
-              value={sku}
-              onChange={(e) => setSku(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && addToCart()}
-            />
-            <button onClick={addToCart} className="bg-black text-white px-4">Add</button>
+  return (
+    <div className="min-h-screen bg-neutral-950 text-white p-6 md:p-10 font-sans">
+      <div className="max-w-5xl mx-auto">
+        <header className="flex justify-between items-center mb-8 border-b border-neutral-800 pb-4">
+          <div>
+            <h1 className="text-2xl font-black tracking-widest">MENARC</h1>
+            <p className="text-xs text-neutral-400">Offline Point of Sale & Inventory</p>
+          </div>
+          <button 
+            onClick={fetchInventory} 
+            className="text-xs text-neutral-400 hover:text-white border border-neutral-800 px-3 py-1.5 rounded transition"
+          >
+            Refresh Stock
+          </button>
+        </header>
+
+        {statusMsg && (
+          <div className="mb-6 p-3 bg-neutral-900 border border-neutral-700 text-yellow-400 text-sm rounded">
+            {statusMsg}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* Live Inventory Column */}
+          <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-xl shadow-lg">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="font-bold text-base text-neutral-200">Live Inventory</h2>
+              <span className="text-xs text-neutral-500">{inventory.length} SKUs</span>
+            </div>
+
+            {loading ? (
+              <p className="text-sm text-neutral-500 py-4">Loading inventory...</p>
+            ) : inventory.length === 0 ? (
+              <p className="text-sm text-neutral-500 py-4">No products found in database.</p>
+            ) : (
+              <div className="divide-y divide-neutral-800 max-h-[420px] overflow-y-auto pr-2">
+                {inventory.map((item) => (
+                  <div key={item.sku} className="py-3 flex justify-between items-center text-sm">
+                    <div>
+                      <p className="font-semibold text-neutral-100">{item.sku}</p>
+                      <p className="text-xs text-neutral-400">{item.name} {item.color ? `• ${item.color}` : ''} {item.size ? `• ${item.size}` : ''}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`font-mono text-sm ${item.current_quantity < 15 ? 'text-amber-400 font-bold' : 'text-neutral-300'}`}>
+                        {item.current_quantity} in stock
+                      </p>
+                      <p className="text-xs text-neutral-500">₹{item.price}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div className="bg-white border p-6 min-h-[300px] flex flex-col justify-between">
-            <div>
-              <h2 className="font-bold mb-4">Current Cart</h2>
-              {cart.map((item, index) => (
-                <div key={index} className="flex justify-between text-sm py-1">
-                  <span>{item.sku} (x{item.checkoutQty})</span>
-                  <span>${item.price}</span>
-                </div>
-              ))}
-            </div>
-            
-            {cart.length > 0 && (
-              <button 
-                onClick={completeSale} 
-                className="w-full bg-black text-white py-3 font-bold mt-4"
+          {/* Checkout / Cart Column */}
+          <div className="space-y-6">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Scan or type SKU (e.g. TSH-BLK-M)..."
+                className="bg-neutral-900 border border-neutral-700 text-white px-4 py-3 rounded-lg w-full uppercase placeholder:text-neutral-500 focus:outline-none focus:border-white text-sm tracking-wider"
+                value={sku}
+                onChange={(e) => setSku(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addToCart()}
+              />
+              <button
+                onClick={addToCart}
+                className="bg-white text-black font-bold px-6 py-3 rounded-lg hover:bg-neutral-200 transition text-sm shrink-0"
               >
-                COMPLETE SALE
+                Add
               </button>
-            )}
+            </div>
+
+            <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-xl flex flex-col justify-between min-h-[340px] shadow-lg">
+              <div>
+                <h2 className="font-bold text-base text-neutral-200 mb-4">Current Cart</h2>
+                {cart.length === 0 ? (
+                  <p className="text-sm text-neutral-500 py-12 text-center">Cart is empty. Enter a SKU above to begin sale.</p>
+                ) : (
+                  <div className="divide-y divide-neutral-800 max-h-[220px] overflow-y-auto pr-2">
+                    {cart.map((item, index) => (
+                      <div key={index} className="py-2.5 flex justify-between items-center text-sm">
+                        <div>
+                          <p className="font-medium text-white">{item.sku}</p>
+                          <p className="text-xs text-neutral-400">Qty: {item.checkoutQty}</p>
+                        </div>
+                        <span className="font-mono text-neutral-200">₹{item.price * item.checkoutQty}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {cart.length > 0 && (
+                <div className="pt-4 border-t border-neutral-800 mt-4">
+                  <div className="flex justify-between items-center text-lg font-bold mb-4">
+                    <span>Total</span>
+                    <span className="font-mono text-white">₹{cartTotal}</span>
+                  </div>
+                  <button
+                    onClick={completeSale}
+                    className="w-full bg-white text-black font-bold py-3.5 rounded-lg hover:bg-neutral-200 transition tracking-wide text-sm"
+                  >
+                    COMPLETE SALE
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
