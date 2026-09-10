@@ -88,12 +88,26 @@ export default function InventoryManagement() {
             <h1 className="text-2xl font-black tracking-widest">MENARC</h1>
             <p className="text-xs text-neutral-400">Inventory Management & Stock Control</p>
           </div>
-          <Link 
-            href="/" 
-            className="text-xs text-neutral-400 hover:text-white border border-neutral-800 px-3 py-1.5 rounded transition"
-          >
-            Back to POS
-          </Link>
+          <nav className="flex items-center gap-2">
+            <Link 
+              href="/" 
+              className="text-xs text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded transition"
+            >
+              POS Checkout
+            </Link>
+            <Link 
+              href="/inventory" 
+              className="text-xs text-white bg-neutral-800 border border-neutral-700 px-3 py-1.5 rounded transition"
+            >
+              Inventory
+            </Link>
+            <Link 
+              href="/dashboard" 
+              className="text-xs text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded transition"
+            >
+              Dashboard
+            </Link>
+          </nav>
         </header>
 
         {statusMsg && (
