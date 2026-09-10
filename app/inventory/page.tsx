@@ -13,10 +13,12 @@ export default function InventoryManagement() {
   const [loading, setLoading] = useState(true);
   const [statusMsg, setStatusMsg] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('ALL');
 
   // Form state for new product
   const [newSku, setNewSku] = useState('');
   const [newName, setNewName] = useState('');
+  const [newCategory, setNewCategory] = useState('T-Shirts');
   const [newColor, setNewColor] = useState('');
   const [newSize, setNewSize] = useState('');
   const [newPrice, setNewPrice] = useState('');
@@ -47,6 +49,7 @@ export default function InventoryManagement() {
     const { error } = await supabase.from('inventory').insert({
       sku: newSku.trim().toUpperCase(),
       name: newName.trim(),
+      category: newCategory.trim(),
       color: newColor.trim(),
       size: newSize.trim(),
       price: parseFloat(newPrice),
@@ -81,15 +84,21 @@ export default function InventoryManagement() {
     }
   }
 
-  // Filter inventory based on search term
+  // Extract unique categories for filter dropdown
+  const categories = ['ALL', ...Array.from(new Set(inventory.map(item => item.category || 'General')))];
+
+  // Filter inventory based on search term and category
   const filteredInventory = inventory.filter((item) => {
     const term = searchTerm.toLowerCase();
-    return (
+    const matchesSearch = 
       item.sku?.toLowerCase().includes(term) ||
       item.name?.toLowerCase().includes(term) ||
       item.color?.toLowerCase().includes(term) ||
-      item.size?.toLowerCase().includes(term)
-    );
+      item.size?.toLowerCase().includes(term);
+
+    const matchesCategory = selectedCategory === 'ALL' || (item.category || 'General') === selectedCategory;
+
+    return matchesSearch && matchesCategory;
   });
 
   return (
@@ -153,6 +162,16 @@ export default function InventoryManagement() {
                   onChange={(e) => setNewName(e.target.value)}
                 />
               </div>
+              <div>
+                <label className="text-xs text-neutral-400 block mb-1">Category</label>
+                <input
+                  type="text"
+                  placeholder="T-Shirts / Activewear"
+                  className="bg-neutral-950 border border-neutral-700 rounded p-2 text-sm text-white focus:outline-none focus:border-white w-full"
+                  value={newCategory}
+                  onChange={(e) => setNewCategory(e.target.value)}
+                />
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-xs text-neutral-400 block mb-1">Color</label>
@@ -206,20 +225,31 @@ export default function InventoryManagement() {
             </form>
           </div>
 
-          {/* Inventory Table List with Search & Low Stock Warnings */}
+          {/* Inventory Table List with Category Filter */}
           <div className="md:col-span-2 bg-neutral-900 border border-neutral-800 p-6 rounded-xl shadow-lg flex flex-col">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
               <div>
                 <h2 className="font-bold text-base text-neutral-200">Catalog Stock List</h2>
                 <p className="text-xs text-neutral-500">Showing {filteredInventory.length} of {inventory.length} SKUs</p>
               </div>
-              <input
-                type="text"
-                placeholder="Search SKU, name, color..."
-                className="bg-neutral-950 border border-neutral-700 text-white px-3 py-1.5 rounded text-xs focus:outline-none focus:border-white w-full sm:w-56"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+              <div className="flex gap-2 w-full sm:w-auto">
+                <select
+                  className="bg-neutral-950 border border-neutral-700 text-white px-3 py-1.5 rounded text-xs focus:outline-none focus:border-white"
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                >
+                  {categories.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  placeholder="Search SKU, name..."
+                  className="bg-neutral-950 border border-neutral-700 text-white px-3 py-1.5 rounded text-xs focus:outline-none focus:border-white w-full sm:w-44"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
             </div>
 
             {loading ? (
@@ -235,6 +265,9 @@ export default function InventoryManagement() {
                       <div>
                         <div className="flex items-center gap-2">
                           <p className="font-semibold text-neutral-100">{item.sku}</p>
+                          <span className="bg-neutral-800 text-neutral-300 text-[10px] px-1.5 py-0.5 rounded">
+                            {item.category || 'General'}
+                          </span>
                           {isLowStock && (
                             <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 text-[10px] px-1.5 py-0.5 rounded font-medium">
                               Low Stock
