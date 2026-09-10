@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import Link from 'next/link';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -83,12 +84,26 @@ export default function POS() {
             <h1 className="text-2xl font-black tracking-widest">MENARC</h1>
             <p className="text-xs text-neutral-400">Offline Point of Sale & Inventory</p>
           </div>
-          <button 
-            onClick={fetchInventory} 
-            className="text-xs text-neutral-400 hover:text-white border border-neutral-800 px-3 py-1.5 rounded transition"
-          >
-            Refresh Stock
-          </button>
+          <nav className="flex items-center gap-2">
+            <Link 
+              href="/" 
+              className="text-xs text-white bg-neutral-800 border border-neutral-700 px-3 py-1.5 rounded transition"
+            >
+              POS Checkout
+            </Link>
+            <Link 
+              href="/inventory" 
+              className="text-xs text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded transition"
+            >
+              Inventory
+            </Link>
+            <Link 
+              href="/dashboard" 
+              className="text-xs text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded transition"
+            >
+              Dashboard
+            </Link>
+          </nav>
         </header>
 
         {statusMsg && (
@@ -102,7 +117,12 @@ export default function POS() {
           <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-xl shadow-lg">
             <div className="flex justify-between items-center mb-4">
               <h2 className="font-bold text-base text-neutral-200">Live Inventory</h2>
-              <span className="text-xs text-neutral-500">{inventory.length} SKUs</span>
+              <button 
+                onClick={fetchInventory} 
+                className="text-xs text-neutral-400 hover:text-white border border-neutral-800 px-2.5 py-1 rounded transition"
+              >
+                Refresh
+              </button>
             </div>
 
             {loading ? (
