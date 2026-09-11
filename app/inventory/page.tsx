@@ -2,16 +2,19 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import Link from 'next/link';
+import { Search, Download, Pencil, Trash2, X, Check, CheckCircle2, XCircle, PackagePlus } from 'lucide-react';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+type Toast = { msg: string; type: 'success' | 'error' } | null;
+
 export default function InventoryManagement() {
   const [inventory, setInventory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusMsg, setStatusMsg] = useState('');
+  const [toast, setToast] = useState<Toast>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
 
@@ -25,15 +28,25 @@ export default function InventoryManagement() {
   const [newPrice, setNewPrice] = useState('');
   const [newQty, setNewQty] = useState('');
 
+  // Inline edit state
+  const [editingSku, setEditingSku] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<any>({});
+  const [confirmDeleteSku, setConfirmDeleteSku] = useState<string | null>(null);
+
   useEffect(() => {
     fetchInventory();
   }, []);
+
+  function notify(msg: string, type: 'success' | 'error' = 'success') {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 2800);
+  }
 
   async function fetchInventory() {
     setLoading(true);
     const { data, error } = await supabase.from('inventory').select('*').order('sku');
     if (error) {
-      setStatusMsg('Error fetching stock: ' + error.message);
+      notify('Error fetching stock: ' + error.message, 'error');
     } else if (data) {
       setInventory(data);
     }
@@ -43,7 +56,7 @@ export default function InventoryManagement() {
   async function handleAddProduct(e: React.FormEvent) {
     e.preventDefault();
     if (!newSku || !newPrice || !newQty) {
-      alert('Please fill out SKU, Price, and Quantity.');
+      notify('Please fill out SKU, Price, and Quantity.', 'error');
       return;
     }
 
@@ -59,9 +72,9 @@ export default function InventoryManagement() {
     });
 
     if (error) {
-      alert('Error adding product: ' + error.message);
+      notify('Error adding product: ' + error.message, 'error');
     } else {
-      alert('Product added successfully!');
+      notify('Product added successfully.');
       setNewSku('');
       setNewName('');
       setNewColor('');
@@ -80,15 +93,55 @@ export default function InventoryManagement() {
       .eq('sku', sku);
 
     if (error) {
-      alert('Failed to update quantity: ' + error.message);
+      notify('Failed to update quantity: ' + error.message, 'error');
     } else {
+      fetchInventory();
+    }
+  }
+
+  function startEdit(item: any) {
+    setEditingSku(item.sku);
+    setEditDraft({ ...item });
+    setConfirmDeleteSku(null);
+  }
+
+  async function saveEdit() {
+    const { error } = await supabase
+      .from('inventory')
+      .update({
+        name: editDraft.name,
+        category: editDraft.category,
+        supplier: editDraft.supplier,
+        color: editDraft.color,
+        size: editDraft.size,
+        price: parseFloat(editDraft.price),
+        current_quantity: parseInt(editDraft.current_quantity),
+      })
+      .eq('sku', editingSku);
+
+    if (error) {
+      notify('Failed to save changes: ' + error.message, 'error');
+    } else {
+      notify('Item updated.');
+      setEditingSku(null);
+      fetchInventory();
+    }
+  }
+
+  async function deleteItem(sku: string) {
+    const { error } = await supabase.from('inventory').delete().eq('sku', sku);
+    if (error) {
+      notify('Failed to delete: ' + error.message, 'error');
+    } else {
+      notify('Item deleted.');
+      setConfirmDeleteSku(null);
       fetchInventory();
     }
   }
 
   // Export Inventory to CSV
   function exportInventoryCSV() {
-    if (inventory.length === 0) return alert('No inventory data to export.');
+    if (inventory.length === 0) return notify('No inventory data to export.', 'error');
     const headers = ['SKU', 'Name', 'Category', 'Supplier', 'Color', 'Size', 'Price', 'Stock'];
     const rows = inventory.map(i => [i.sku, i.name, i.category, i.supplier, i.color, i.size, i.price, i.current_quantity]);
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
@@ -105,7 +158,7 @@ export default function InventoryManagement() {
 
   const filteredInventory = inventory.filter((item) => {
     const term = searchTerm.toLowerCase();
-    const matchesSearch = 
+    const matchesSearch =
       item.sku?.toLowerCase().includes(term) ||
       item.name?.toLowerCase().includes(term) ||
       item.supplier?.toLowerCase().includes(term) ||
@@ -131,12 +184,12 @@ export default function InventoryManagement() {
           </nav>
         </header>
 
-        {statusMsg && <div className="mb-6 p-3 bg-neutral-900 border border-neutral-700 text-yellow-400 text-sm rounded">{statusMsg}</div>}
-
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {/* Add Item Form */}
           <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-xl shadow-lg h-fit">
-            <h2 className="font-bold text-base text-neutral-200 mb-4">Add New Item</h2>
+            <h2 className="flex items-center gap-2 font-bold text-base text-neutral-200 mb-4">
+              <PackagePlus size={16} /> Add New Item
+            </h2>
             <form onSubmit={handleAddProduct} className="space-y-4">
               <div>
                 <label className="text-xs text-neutral-400 block mb-1">SKU *</label>
@@ -149,7 +202,10 @@ export default function InventoryManagement() {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-xs text-neutral-400 block mb-1">Category</label>
-                  <input type="text" placeholder="T-Shirts" className="bg-neutral-950 border border-neutral-700 rounded p-2 text-sm text-white focus:outline-none focus:border-white w-full" value={newCategory} onChange={(e) => setNewCategory(e.target.value)} />
+                  <input list="category-options" type="text" placeholder="T-Shirts" className="bg-neutral-950 border border-neutral-700 rounded p-2 text-sm text-white focus:outline-none focus:border-white w-full" value={newCategory} onChange={(e) => setNewCategory(e.target.value)} />
+                  <datalist id="category-options">
+                    {categories.filter(c => c !== 'ALL').map(c => <option key={c} value={c} />)}
+                  </datalist>
                 </div>
                 <div>
                   <label className="text-xs text-neutral-400 block mb-1">Supplier</label>
@@ -169,11 +225,11 @@ export default function InventoryManagement() {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-xs text-neutral-400 block mb-1">Price (₹) *</label>
-                  <input type="number" placeholder="499" className="bg-neutral-950 border border-neutral-700 rounded p-2 text-sm text-white focus:outline-none focus:border-white w-full" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} />
+                  <input type="number" min="0" placeholder="499" className="bg-neutral-950 border border-neutral-700 rounded p-2 text-sm text-white focus:outline-none focus:border-white w-full" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} />
                 </div>
                 <div>
                   <label className="text-xs text-neutral-400 block mb-1">Quantity *</label>
-                  <input type="number" placeholder="50" className="bg-neutral-950 border border-neutral-700 rounded p-2 text-sm text-white focus:outline-none focus:border-white w-full" value={newQty} onChange={(e) => setNewQty(e.target.value)} />
+                  <input type="number" min="0" placeholder="50" className="bg-neutral-950 border border-neutral-700 rounded p-2 text-sm text-white focus:outline-none focus:border-white w-full" value={newQty} onChange={(e) => setNewQty(e.target.value)} />
                 </div>
               </div>
               <button type="submit" className="w-full bg-white text-black font-bold py-2.5 rounded hover:bg-neutral-200 transition text-sm mt-2">Save Product</button>
@@ -188,35 +244,77 @@ export default function InventoryManagement() {
                 <p className="text-xs text-neutral-500">Showing {filteredInventory.length} of {inventory.length} SKUs</p>
               </div>
               <div className="flex gap-2 w-full sm:w-auto flex-wrap">
-                <button onClick={exportInventoryCSV} className="text-xs bg-neutral-800 border border-neutral-700 hover:bg-neutral-700 px-3 py-1.5 rounded transition">Export CSV</button>
+                <button onClick={exportInventoryCSV} className="flex items-center gap-1.5 text-xs bg-neutral-800 border border-neutral-700 hover:bg-neutral-700 px-3 py-1.5 rounded transition">
+                  <Download size={12} /> Export CSV
+                </button>
                 <select className="bg-neutral-950 border border-neutral-700 text-white px-3 py-1.5 rounded text-xs focus:outline-none" value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)}>
                   {categories.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
                 </select>
-                <input type="text" placeholder="Search SKU, supplier..." className="bg-neutral-950 border border-neutral-700 text-white px-3 py-1.5 rounded text-xs focus:outline-none w-full sm:w-36" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                <div className="relative w-full sm:w-40">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none" size={12} />
+                  <input type="text" placeholder="Search SKU, supplier..." className="bg-neutral-950 border border-neutral-700 text-white pl-7 pr-2 py-1.5 rounded text-xs focus:outline-none w-full" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                </div>
               </div>
             </div>
 
-            {loading ? <p className="text-sm text-neutral-500 py-4">Loading catalog...</p> : filteredInventory.length === 0 ? <p className="text-sm text-neutral-500 py-4">No matching inventory items found.</p> : (
+            {loading ? (
+              <div className="space-y-3 py-1">
+                {[...Array(6)].map((_, i) => <div key={i} className="h-14 bg-neutral-800/50 rounded animate-pulse" />)}
+              </div>
+            ) : filteredInventory.length === 0 ? (
+              <p className="text-sm text-neutral-500 py-4">No matching inventory items found.</p>
+            ) : (
               <div className="divide-y divide-neutral-800 max-h-[440px] overflow-y-auto pr-2">
                 {filteredInventory.map((item) => {
                   const isLowStock = item.current_quantity < 15;
+                  const isEditing = editingSku === item.sku;
+
+                  if (isEditing) {
+                    return (
+                      <div key={item.sku} className="py-3 space-y-2 bg-neutral-950/60 -mx-2 px-2 rounded">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-semibold text-sm">{item.sku}</span>
+                          <span className="text-[10px] text-neutral-500">editing</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input className="bg-neutral-900 border border-neutral-700 rounded p-1.5 text-xs" placeholder="Name" value={editDraft.name || ''} onChange={(e) => setEditDraft({ ...editDraft, name: e.target.value })} />
+                          <input className="bg-neutral-900 border border-neutral-700 rounded p-1.5 text-xs" placeholder="Category" value={editDraft.category || ''} onChange={(e) => setEditDraft({ ...editDraft, category: e.target.value })} />
+                          <input className="bg-neutral-900 border border-neutral-700 rounded p-1.5 text-xs" placeholder="Color" value={editDraft.color || ''} onChange={(e) => setEditDraft({ ...editDraft, color: e.target.value })} />
+                          <input className="bg-neutral-900 border border-neutral-700 rounded p-1.5 text-xs" placeholder="Size" value={editDraft.size || ''} onChange={(e) => setEditDraft({ ...editDraft, size: e.target.value })} />
+                          <input type="number" min="0" className="bg-neutral-900 border border-neutral-700 rounded p-1.5 text-xs" placeholder="Price" value={editDraft.price ?? ''} onChange={(e) => setEditDraft({ ...editDraft, price: e.target.value })} />
+                          <input type="number" min="0" className="bg-neutral-900 border border-neutral-700 rounded p-1.5 text-xs" placeholder="Qty" value={editDraft.current_quantity ?? ''} onChange={(e) => setEditDraft({ ...editDraft, current_quantity: e.target.value })} />
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                          <button onClick={saveEdit} className="flex items-center gap-1 text-xs bg-white text-black font-semibold px-3 py-1.5 rounded"><Check size={12} /> Save</button>
+                          <button onClick={() => setEditingSku(null)} className="flex items-center gap-1 text-xs bg-neutral-800 px-3 py-1.5 rounded"><X size={12} /> Cancel</button>
+                        </div>
+                      </div>
+                    );
+                  }
+
                   return (
-                    <div key={item.sku} className="py-3 flex justify-between items-center text-sm">
-                      <div>
-                        <div className="flex items-center gap-2">
+                    <div key={item.sku} className="py-3 flex justify-between items-center text-sm gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-semibold text-neutral-100">{item.sku}</p>
                           <span className="bg-neutral-800 text-neutral-300 text-[10px] px-1.5 py-0.5 rounded">{item.category || 'General'}</span>
                           {item.supplier && <span className="bg-neutral-800/60 text-neutral-400 text-[10px] px-1.5 py-0.5 rounded">Supplier: {item.supplier}</span>}
                           {isLowStock && <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 text-[10px] px-1.5 py-0.5 rounded font-medium">Low Stock</span>}
                         </div>
-                        <p className="text-xs text-neutral-400">{item.name || 'Unnamed'} {item.color ? `• ${item.color}` : ''} {item.size ? `• ${item.size}` : ''} | ₹{item.price}</p>
+                        <p className="text-xs text-neutral-400 truncate">{item.name || 'Unnamed'} {item.color ? `• ${item.color}` : ''} {item.size ? `• ${item.size}` : ''} | ₹{item.price}</p>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2 shrink-0">
                         <span className={`font-mono text-sm ${isLowStock ? 'text-amber-400 font-bold' : 'text-neutral-300'}`}>{item.current_quantity} qty</span>
                         <div className="flex gap-1">
                           <button onClick={() => updateQuantity(item.sku, item.current_quantity, -1)} className="bg-neutral-800 px-2 py-1 rounded text-xs hover:bg-neutral-700">-</button>
                           <button onClick={() => updateQuantity(item.sku, item.current_quantity, 1)} className="bg-neutral-800 px-2 py-1 rounded text-xs hover:bg-neutral-700">+</button>
                         </div>
+                        <button onClick={() => startEdit(item)} className="text-neutral-500 hover:text-white p-1" aria-label="Edit"><Pencil size={13} /></button>
+                        {confirmDeleteSku === item.sku ? (
+                          <button onClick={() => deleteItem(item.sku)} className="text-[10px] bg-red-950 border border-red-700 text-red-300 px-2 py-1 rounded font-medium">Confirm?</button>
+                        ) : (
+                          <button onClick={() => setConfirmDeleteSku(item.sku)} className="text-neutral-500 hover:text-red-400 p-1" aria-label="Delete"><Trash2 size={13} /></button>
+                        )}
                       </div>
                     </div>
                   );
@@ -226,6 +324,14 @@ export default function InventoryManagement() {
           </div>
         </div>
       </div>
+
+      {toast && (
+        <div className={`fixed bottom-6 right-6 flex items-center gap-2 px-4 py-3 rounded-lg shadow-xl border text-sm font-medium z-50 animate-in fade-in slide-in-from-bottom-2
+          ${toast.type === 'success' ? 'bg-emerald-950 border-emerald-700 text-emerald-300' : 'bg-red-950 border-red-700 text-red-300'}`}>
+          {toast.type === 'success' ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+          {toast.msg}
+        </div>
+      )}
     </div>
   );
 }
