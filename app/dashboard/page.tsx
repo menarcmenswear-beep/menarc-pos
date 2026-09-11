@@ -1,16 +1,14 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { Download, RefreshCw, TrendingUp, Package, Receipt, XCircle, Trophy } from 'lucide-react';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabase = createClient();
 
 export default function Dashboard() {
   const [sales, setSales] = useState<any[]>([]);
+  const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -23,18 +21,41 @@ export default function Dashboard() {
 
   async function fetchSales() {
     setLoading(true);
-    let query = supabase.from('sales').select('*').order('created_at', { ascending: false });
 
+    // 1. Sale headers (subtotal / discount_total / total / status) for the date range
+    let query = supabase.from('sales').select('*').order('created_at', { ascending: false });
     if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
     if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
 
-    const { data, error } = await query;
+    const { data: salesData, error: salesError } = await query;
 
-    if (error) {
-      setError(error.message);
+    if (salesError) {
+      setError(salesError.message);
       setTimeout(() => setError(''), 4000);
-    } else if (data) {
-      setSales(data);
+      setLoading(false);
+      return;
+    }
+
+    setSales(salesData || []);
+
+    // 2. Line items for those sales (sku/qty/rate live on sale_items, not sales)
+    const saleIds = (salesData || []).map(s => s.id);
+    if (saleIds.length === 0) {
+      setItems([]);
+      setLoading(false);
+      return;
+    }
+
+    const { data: itemsData, error: itemsError } = await supabase
+      .from('sale_items')
+      .select('*')
+      .in('sale_id', saleIds);
+
+    if (itemsError) {
+      setError(itemsError.message);
+      setTimeout(() => setError(''), 4000);
+    } else {
+      setItems(itemsData || []);
     }
     setLoading(false);
   }
@@ -45,9 +66,13 @@ export default function Dashboard() {
   }
 
   function exportSalesCSV() {
-    if (sales.length === 0) return;
-    const headers = ['Transaction ID', 'SKU', 'Quantity', 'Item Rate', 'Discount', 'Final Value', 'Timestamp'];
-    const rows = sales.map(s => [s.id, s.sku, s.qty, s.item_rate, s.discount || 0, s.final_value, s.created_at]);
+    if (items.length === 0) return;
+    const salesById = new Map(sales.map(s => [s.id, s]));
+    const headers = ['Sale ID', 'SKU', 'Quantity', 'Item Rate', 'Discount', 'Line Total', 'Sale Total', 'Status', 'Timestamp'];
+    const rows = items.map(i => {
+      const parent = salesById.get(i.sale_id);
+      return [i.sale_id, i.sku, i.qty, i.item_rate, i.discount || 0, i.final_value, parent?.total ?? '', parent?.status ?? '', parent?.created_at ?? ''];
+    });
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
@@ -58,17 +83,17 @@ export default function Dashboard() {
     document.body.removeChild(link);
   }
 
-  const totalRevenue = sales.reduce((acc, item) => acc + (item.final_value || 0), 0);
-  const totalUnits = sales.reduce((acc, item) => acc + (item.qty || 0), 0);
+  const totalRevenue = sales.reduce((acc, s) => acc + (s.total || 0), 0);
+  const totalUnits = items.reduce((acc, i) => acc + (i.qty || 0), 0);
   const totalTransactions = sales.length;
 
-  // Daily revenue series for the bar chart
+  // Daily revenue series for the bar chart — from sale headers, one bar per transaction day
   const dailyRevenue = useMemo(() => {
     const map = new Map<string, number>();
     sales.forEach(s => {
       if (!s.created_at) return;
       const day = new Date(s.created_at).toISOString().split('T')[0];
-      map.set(day, (map.get(day) || 0) + (s.final_value || 0));
+      map.set(day, (map.get(day) || 0) + (s.total || 0));
     });
     return Array.from(map.entries())
       .sort(([a], [b]) => a.localeCompare(b))
@@ -77,19 +102,26 @@ export default function Dashboard() {
 
   const maxDaily = Math.max(1, ...dailyRevenue.map(([, v]) => v));
 
-  // Top sellers by revenue
+  // Top sellers by revenue — from line items
   const topSellers = useMemo(() => {
     const map = new Map<string, { qty: number; revenue: number }>();
-    sales.forEach(s => {
-      const entry = map.get(s.sku) || { qty: 0, revenue: 0 };
-      entry.qty += s.qty || 0;
-      entry.revenue += s.final_value || 0;
-      map.set(s.sku, entry);
+    items.forEach(i => {
+      const entry = map.get(i.sku) || { qty: 0, revenue: 0 };
+      entry.qty += i.qty || 0;
+      entry.revenue += i.final_value || 0;
+      map.set(i.sku, entry);
     });
     return Array.from(map.entries())
       .sort((a, b) => b[1].revenue - a[1].revenue)
       .slice(0, 5);
-  }, [sales]);
+  }, [items]);
+
+  // Item count per sale, for the transaction list
+  const itemCountBySale = useMemo(() => {
+    const map = new Map<string, number>();
+    items.forEach(i => map.set(i.sale_id, (map.get(i.sale_id) || 0) + i.qty));
+    return map;
+  }, [items]);
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white p-6 md:p-10 font-sans">
@@ -192,11 +224,11 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Sales History List */}
+        {/* Sales History List — one row per real transaction */}
         <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-xl shadow-lg">
           <div className="flex justify-between items-center mb-4">
             <h2 className="font-bold text-base text-neutral-200">Sales Transactions History</h2>
-            <span className="text-xs text-neutral-500">{sales.length} Records Found</span>
+            <span className="text-xs text-neutral-500">{sales.length} Transactions Found</span>
           </div>
 
           {loading ? (
@@ -210,11 +242,18 @@ export default function Dashboard() {
               {sales.map((sale) => (
                 <div key={sale.id} className="py-3.5 flex justify-between items-center text-sm">
                   <div>
-                    <p className="font-semibold text-neutral-100 uppercase">{sale.sku}</p>
-                    <p className="text-xs text-neutral-400">Qty: {sale.qty} • Rate: ₹{sale.item_rate} {sale.discount > 0 ? `• Discount: ₹${sale.discount}` : ''}</p>
+                    <p className="font-semibold text-neutral-100">
+                      {itemCountBySale.get(sale.id) || 0} item{(itemCountBySale.get(sale.id) || 0) !== 1 ? 's' : ''}
+                      {sale.status && sale.status !== 'completed' && (
+                        <span className="ml-2 text-[10px] uppercase text-amber-400 border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 rounded align-middle">{sale.status}</span>
+                      )}
+                    </p>
+                    <p className="text-xs text-neutral-400">
+                      {sale.discount_total > 0 ? `Discount: ₹${sale.discount_total} • ` : ''}Subtotal: ₹{sale.subtotal}
+                    </p>
                   </div>
                   <div className="text-right">
-                    <p className="font-mono text-sm font-bold text-white">₹{sale.final_value}</p>
+                    <p className="font-mono text-sm font-bold text-white">₹{sale.total}</p>
                     <p className="text-xs text-neutral-500">{sale.created_at ? new Date(sale.created_at).toLocaleString() : 'Just now'}</p>
                   </div>
                 </div>
