@@ -1,13 +1,10 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { ScanLine, ShoppingCart, Trash2, Plus, Minus, RefreshCw, CheckCircle2, XCircle, Loader2, Package } from 'lucide-react';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabase = createClient();
 
 type Toast = { msg: string; type: 'success' | 'error' | 'info' } | null;
 
@@ -122,33 +119,22 @@ export default function POS() {
     if (cart.length === 0) return;
     setProcessing(true);
 
-    for (const item of cart) {
-      const finalValue = (item.checkoutQty * item.price) - item.discount;
-      const { error } = await supabase.from('sales').insert({
-        sku: item.sku,
-        qty: item.checkoutQty,
-        item_rate: item.price,
-        discount: item.discount,
-        final_value: finalValue
-      });
+    const items = cart.map(item => ({
+      sku: item.sku,
+      qty: item.checkoutQty,
+      item_rate: item.price,
+      discount: item.discount,
+    }));
 
-      if (error) {
-        notify('Sale failed: ' + error.message, 'error');
-        setProcessing(false);
-        return;
-      }
+    const { error } = await supabase.rpc('record_sale', {
+      p_items: items,
+      p_offline_ref: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : null,
+    });
 
-      // Decrement stock so Live Inventory actually reflects the sale
-      const stockItem = inventory.find(i => i.sku === item.sku);
-      const newQty = Math.max(0, (stockItem?.current_quantity || 0) - item.checkoutQty);
-      const { error: stockError } = await supabase
-        .from('inventory')
-        .update({ current_quantity: newQty })
-        .eq('sku', item.sku);
-
-      if (stockError) {
-        notify('Sale recorded but stock update failed for ' + item.sku, 'error');
-      }
+    if (error) {
+      notify('Sale failed: ' + error.message, 'error');
+      setProcessing(false);
+      return;
     }
 
     playTone(1046, 140);
@@ -200,7 +186,7 @@ export default function POS() {
             ) : (
               <div className="divide-y divide-neutral-800 max-h-[420px] overflow-y-auto pr-2">
                 {inventory.map((item) => {
-                  const isLowStock = item.current_quantity < 15;
+                  const isLowStock = item.current_quantity < (item.low_stock_threshold ?? 15);
                   const isOut = item.current_quantity <= 0;
                   return (
                     <div key={item.sku} className={`py-3 flex justify-between items-center text-sm ${isOut ? 'opacity-50' : ''}`}>
