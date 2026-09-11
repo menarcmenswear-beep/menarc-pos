@@ -1,13 +1,10 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { Search, Download, Pencil, Trash2, X, Check, CheckCircle2, XCircle, PackagePlus } from 'lucide-react';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabase = createClient();
 
 type Toast = { msg: string; type: 'success' | 'error' } | null;
 
@@ -27,6 +24,7 @@ export default function InventoryManagement() {
   const [newSize, setNewSize] = useState('');
   const [newPrice, setNewPrice] = useState('');
   const [newQty, setNewQty] = useState('');
+  const [newThreshold, setNewThreshold] = useState('15');
 
   // Inline edit state
   const [editingSku, setEditingSku] = useState<string | null>(null);
@@ -68,7 +66,8 @@ export default function InventoryManagement() {
       color: newColor.trim(),
       size: newSize.trim(),
       price: parseFloat(newPrice),
-      current_quantity: parseInt(newQty)
+      current_quantity: parseInt(newQty),
+      low_stock_threshold: newThreshold ? parseInt(newThreshold) : 15
     });
 
     if (error) {
@@ -81,6 +80,7 @@ export default function InventoryManagement() {
       setNewSize('');
       setNewPrice('');
       setNewQty('');
+      setNewThreshold('15');
       fetchInventory();
     }
   }
@@ -116,6 +116,7 @@ export default function InventoryManagement() {
         size: editDraft.size,
         price: parseFloat(editDraft.price),
         current_quantity: parseInt(editDraft.current_quantity),
+        low_stock_threshold: editDraft.low_stock_threshold ? parseInt(editDraft.low_stock_threshold) : 15,
       })
       .eq('sku', editingSku);
 
@@ -232,6 +233,10 @@ export default function InventoryManagement() {
                   <input type="number" min="0" placeholder="50" className="bg-neutral-950 border border-neutral-700 rounded p-2 text-sm text-white focus:outline-none focus:border-white w-full" value={newQty} onChange={(e) => setNewQty(e.target.value)} />
                 </div>
               </div>
+              <div>
+                <label className="text-xs text-neutral-400 block mb-1">Low Stock Alert Below</label>
+                <input type="number" min="0" placeholder="15" className="bg-neutral-950 border border-neutral-700 rounded p-2 text-sm text-white focus:outline-none focus:border-white w-full" value={newThreshold} onChange={(e) => setNewThreshold(e.target.value)} />
+              </div>
               <button type="submit" className="w-full bg-white text-black font-bold py-2.5 rounded hover:bg-neutral-200 transition text-sm mt-2">Save Product</button>
             </form>
           </div>
@@ -266,7 +271,7 @@ export default function InventoryManagement() {
             ) : (
               <div className="divide-y divide-neutral-800 max-h-[440px] overflow-y-auto pr-2">
                 {filteredInventory.map((item) => {
-                  const isLowStock = item.current_quantity < 15;
+                  const isLowStock = item.current_quantity < (item.low_stock_threshold ?? 15);
                   const isEditing = editingSku === item.sku;
 
                   if (isEditing) {
@@ -283,6 +288,7 @@ export default function InventoryManagement() {
                           <input className="bg-neutral-900 border border-neutral-700 rounded p-1.5 text-xs" placeholder="Size" value={editDraft.size || ''} onChange={(e) => setEditDraft({ ...editDraft, size: e.target.value })} />
                           <input type="number" min="0" className="bg-neutral-900 border border-neutral-700 rounded p-1.5 text-xs" placeholder="Price" value={editDraft.price ?? ''} onChange={(e) => setEditDraft({ ...editDraft, price: e.target.value })} />
                           <input type="number" min="0" className="bg-neutral-900 border border-neutral-700 rounded p-1.5 text-xs" placeholder="Qty" value={editDraft.current_quantity ?? ''} onChange={(e) => setEditDraft({ ...editDraft, current_quantity: e.target.value })} />
+                          <input type="number" min="0" className="bg-neutral-900 border border-neutral-700 rounded p-1.5 text-xs" placeholder="Low stock below" value={editDraft.low_stock_threshold ?? ''} onChange={(e) => setEditDraft({ ...editDraft, low_stock_threshold: e.target.value })} />
                         </div>
                         <div className="flex gap-2 pt-1">
                           <button onClick={saveEdit} className="flex items-center gap-1 text-xs bg-white text-black font-semibold px-3 py-1.5 rounded"><Check size={12} /> Save</button>
